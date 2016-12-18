@@ -7,10 +7,11 @@ var utils = require('./utils');
  * @param {cache module} cache (optional)
  * @param {object} defaults (optional)
  */
-module.exports = function(cache, props){
+module.exports = function(cache, defaults){
 
   return function (Request) {
-    props = props || {};
+    defaults = defaults || {};
+    var props = utils.cloneObject(defaults);
     props = utils.resetProps(props);
     var supportedMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
     var cacheableMethods = ['GET', 'HEAD'];

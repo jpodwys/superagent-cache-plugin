@@ -11,6 +11,7 @@ module.exports = function(cache, props){
 
   return function (Request) {
     props = props || {};
+    props = utils.resetProps(props);
     var supportedMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
     var cacheableMethods = ['GET', 'HEAD'];
 
@@ -20,7 +21,7 @@ module.exports = function(cache, props){
      */
     Request.doQuery = function(doQuery){
       props.doQuery = doQuery;
-      return this;
+      return Request;
     }
 
     /**
@@ -29,7 +30,7 @@ module.exports = function(cache, props){
      */
     Request.pruneParams = function(pruneParams){
       props.pruneParams = pruneParams;
-      return this;
+      return Request;
     }
 
     /**
@@ -38,7 +39,7 @@ module.exports = function(cache, props){
      */
     Request.pruneOptions = function(pruneOptions){
       props.pruneOptions = pruneOptions;
-      return this;
+      return Request;
     }
 
     /**
@@ -47,7 +48,7 @@ module.exports = function(cache, props){
      */
     Request.prune = function(prune){
       props.prune = prune;
-      return this;
+      return Request;
     }
 
     /**
@@ -56,16 +57,16 @@ module.exports = function(cache, props){
      */
     Request.responseProp = function(responseProp){
       props.responseProp = responseProp;
-      return this;
+      return Request;
     }
 
     /**
-     * Set an expiration for this key that will override the configured cache's default expiration
+     * Set an expiration for Request key that will override the configured cache's default expiration
      * @param {integer} expiration (seconds)
      */
     Request.expiration = function(expiration){
       props.expiration = expiration;
-      return this;
+      return Request;
     }
 
     /**
@@ -74,7 +75,7 @@ module.exports = function(cache, props){
      */
     Request.cacheWhenEmpty = function(cacheWhenEmpty){
       props.cacheWhenEmpty = cacheWhenEmpty;
-      return this;
+      return Request;
     }
 
     /**
@@ -83,17 +84,17 @@ module.exports = function(cache, props){
      */
     Request.forceUpdate = function(forceUpdate){
       props.forceUpdate = (typeof forceUpdate === 'boolean') ? forceUpdate : true;
-      return this;
+      return Request;
     }
 
     /**
      * Overwrites superagent's fake promise support and adds the generated cache key
-     * Only applies if Request.prototype.promise is not set
-     * Fixes this isse: https://github.com/jpodwys/superagent-cache/issues/38
+     * Only applies if Request.promise is not set
+     * Fixes Request isse: https://github.com/jpodwys/superagent-cache/issues/38
      */
-    if(!Request.prototype.promise){
+    if(!Request.promise){
       Request.then = function(fulfill, reject){
-        return this.end(function (err, response, key) {
+        return Request.end(function (err, response, key) {
           err ? reject(err) : fulfill(response, key);
         });
       }
@@ -102,13 +103,13 @@ module.exports = function(cache, props){
     /**
      * An alias for the .end function because I use ._end and .end for other things
      */
-    Request.execute = Request.prototype.end;
+    Request.execute = Request.end;
 
     /**
      * Wraps the .end function so that .resetProps gets called--callable so that no caching logic takes place
      */
     Request._end = function(cb){
-      this.execute(cb);
+      Request.execute(cb);
     }
 
     /**
@@ -116,35 +117,35 @@ module.exports = function(cache, props){
      * @param {function} cb
      */
     Request.end = function(cb){
-      this.scRedirectsList = this.scRedirectsList || [];
-      this.scRedirectsList = this.scRedirectsList.concat(this._redirectList);
-      if(~supportedMethods.indexOf(this.method.toUpperCase())){
-        var _this = this;
-        var key = utils.keygen(this, curProps);
-        if(~cacheableMethods.indexOf(this.method.toUpperCase())){
+      Request.scRedirectsList = Request.scRedirectsList || [];
+      Request.scRedirectsList = Request.scRedirectsList.concat(Request._redirectList);
+      if(~supportedMethods.indexOf(Request.method.toUpperCase())){
+        var _Request = Request;
+        var key = utils.keygen(Request, props);
+        if(~cacheableMethods.indexOf(Request.method.toUpperCase())){
           cache.get(key, function (err, response){
-            if(!err && response && !curProps.forceUpdate){
+            if(!err && response && !props.forceUpdate){
               utils.callbackExecutor(cb, err, response, key);
             }
             else{
-              if(curProps.doQuery){
-                _this._end(function (err, response){
+              if(props.doQuery){
+                _Request._end(function (err, response){
                   if(err){
                     return utils.callbackExecutor(cb, err, response, key);
                   }
                   else if(!err && response){
-                    response.redirects = _this.scRedirectsList;
-                    if(curProps.prune){
-                      response = curProps.prune(response);
+                    response.redirects = _Request.scRedirectsList;
+                    if(props.prune){
+                      response = props.prune(response);
                     }
-                    else if(curProps.responseProp){
-                      response = response[curProps.responseProp] || null;
+                    else if(props.responseProp){
+                      response = response[props.responseProp] || null;
                     }
                     else{
                       response = utils.gutResponse(response);
                     }
-                    if(!utils.isEmpty(response) || curProps.cacheWhenEmpty){
-                      cache.set(key, response, curProps.expiration, function (){
+                    if(!utils.isEmpty(response) || props.cacheWhenEmpty){
+                      cache.set(key, response, props.expiration, function (){
                         return utils.callbackExecutor(cb, err, response, key);
                       });
                     }
@@ -161,13 +162,13 @@ module.exports = function(cache, props){
           });
         }
         else{
-          this._end(function (err, response){
+          Request._end(function (err, response){
             if(err){
               return utils.callbackExecutor(cb, err, response, key);
             }
             if(!err && response){
-              var keyGet = key.replace('"method":"' + _this.method + '"', '"method":"GET"');
-              var keyHead = key.replace('"method":"' + _this.method + '"', '"method":"HEAD"');
+              var keyGet = key.replace('"method":"' + _Request.method + '"', '"method":"GET"');
+              var keyHead = key.replace('"method":"' + _Request.method + '"', '"method":"HEAD"');
               cache.del([keyGet, keyHead], function (){
                 utils.callbackExecutor(cb, err, response, key);
               });
@@ -176,10 +177,12 @@ module.exports = function(cache, props){
         }
       }
       else{
-        this._end(function (err, response){
+        Request._end(function (err, response){
           return utils.callbackExecutor(cb, err, response, undefined);
         });
       }
     }
+
+    return Request;
   }
 }

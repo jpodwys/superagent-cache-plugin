@@ -156,6 +156,25 @@ module.exports = {
   },
 
   /**
+   * Reset superagent-cache's default query properties using the defaults object
+   * @param {object} d
+   */
+  resetProps: function(d){
+    return {
+      doQuery: (typeof d.doQuery === 'boolean') ? d.doQuery : true,
+      cacheWhenEmpty: (typeof d.cacheWhenEmpty === 'boolean') ? d.cacheWhenEmpty : true,
+      prune: d.prune,
+      pruneParams: d.pruneParams,
+      pruneOptions: d.pruneOptions,
+      responseProp: d.responseProp,
+      expiration: d.expiration,
+      forceUpdate: d.forceUpdate,
+      preventDuplicateCalls: d.preventDuplicateCalls,
+      backgroundRefresh: d.backgroundRefresh
+    };
+  },
+
+  /**
    * Handle the varying number of callback output params
    * @param {function} cb
    * @param {object} err

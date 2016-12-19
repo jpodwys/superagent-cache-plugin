@@ -9,6 +9,7 @@ var utils = require('./utils');
  */
 module.exports = function(cache, defaults){
   var self = this;
+  self.cache = cache;
   self.defaults = defaults || {};
 
   return function (Request) {

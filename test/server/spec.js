@@ -47,6 +47,12 @@ app.get('/four', function(req, res){
   res.send(400, {key: 'one'});
 });
 
+var count = 0;
+app.get('/count', function(req, res){
+  count++;
+  res.send(200, {count: count});
+});
+
 app.listen(3000);
 
 describe('superagentCache', function(){
@@ -395,6 +401,120 @@ describe('superagentCache', function(){
       );
     });
 
+  });
+
+  describe('configurability tests', function () {
+
+    it('Should be able to configure global settings: doQuery', function (done) {
+      superagentCache.defaults = {doQuery: false, expiration: 1};
+      superagent
+        .get('localhost:3000/one')
+        .use(superagentCache)
+        .end(function (err, response, key){
+          cache.get(key, function (err, response) {
+            expect(response).toBe(null);
+            done();
+          });
+        }
+      );
+    });
+
+    it('Global settings should be locally overwritten by chainables: doQuery', function (done) {
+      superagentCache.defaults = {doQuery: false, expiration: 1};
+      superagent
+        .get('localhost:3000/one')
+        .use(superagentCache)
+        .doQuery(true)
+        .end(function (err, response, key){
+          cache.get(key, function (err, response) {
+            expect(response).toNotBe(null);
+            expect(response.body.key).toBe('one');
+            done();
+          });
+        }
+      );
+    });
+
+    it('Should be able to configure global settings: expiration', function (done) {
+      superagentCache.defaults = {doQuery: false, expiration: 1};
+      superagent
+        .get('localhost:3000/one')
+        .use(superagentCache)
+        .doQuery(true)
+        .end(function (err, response, key){
+          cache.get(key, function (err, response) {
+            expect(response).toNotBe(null);
+            expect(response.body.key).toBe('one');
+            setTimeout(function(){
+              superagent
+                .get('localhost:3000/one')
+                .use(superagentCache)
+                .end(function (err, response, key){
+                  cache.get(key, function (err, response) {
+                    expect(response).toBe(null);
+                    done();
+                  });
+                }
+              );
+            }, 1000);
+          });
+        }
+      );
+    });
+
+    it('Global settings should be locally overwritten by chainables: expiration', function (done) {
+      superagentCache.defaults = {doQuery: false, expiration: 1};
+      superagent
+        .get('localhost:3000/one')
+        .use(superagentCache)
+        .doQuery(true)
+        .expiration(2)
+        .end(function (err, response, key){
+          cache.get(key, function (err, response) {
+            expect(response).toNotBe(null);
+            expect(response.body.key).toBe('one');
+            setTimeout(function(){
+              superagent
+                .get('localhost:3000/one')
+                .use(superagentCache)
+                .end(function (err, response, key){
+                  cache.get(key, function (err, response) {
+                    expect(response).toNotBe(null);
+                    expect(response.body.key).toBe('one');
+                    done();
+                  });
+                }
+              );
+            }, 1000);
+          });
+        }
+      );
+    });
+
+  });
+
+  describe('forceUpdate tests', function () {
+
+    it('.forceUpdate() should prevent the module from hitting the cache', function (done) {
+      superagent
+        .get('localhost:3000/count')
+        .use(superagentCache)
+        .end(function (err, response, key){
+          cache.get(key, function (err, response){
+            expect(response.body.count).toBe(1);
+            superagent
+              .get('localhost:3000/count')
+              .use(superagentCache)
+              .forceUpdate()
+              .end(function (err, response, key){
+                expect(response.body.count).toBe(2);
+                done();
+              }
+            );
+          });
+        }
+      );
+    });
   });
 
 });

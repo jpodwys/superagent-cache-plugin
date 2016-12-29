@@ -1,7 +1,7 @@
 {
   "name": "superagent-cache-plugin",
   "version": "1.0.0",
-  "description": "",
+  "description": "Superagent with flexible built-in caching.",
   "main": "index.js",
   "devDependencies": {
     "superagent": "1.7.2",
@@ -24,5 +24,15 @@
   "bugs": {
     "url": "https://github.com/jpodwys/superagent-cache-plugin/issues"
   },
-  "homepage": "https://github.com/jpodwys/superagent-cache-plugin#readme"
+  "homepage": "https://github.com/jpodwys/superagent-cache-plugin#readme",
+  "directories": {
+    "test": "test"
+  },
+  "keywords": [
+    "superagent",
+    "cache",
+    "plugin",
+    "browser",
+    "node"
+  ]
 }

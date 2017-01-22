@@ -3,8 +3,7 @@ var utils = require('./utils');
 /**
  * superagentCache constructor
  * @constructor
- * @param {superagent} agent (optional)
- * @param {cache module} cache (optional)
+ * @param {cache module} cache
  * @param {object} defaults (optional)
  */
 module.exports = function(cache, defaults){

@@ -1,6 +1,6 @@
 {
   "name": "superagent-cache-plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Superagent with flexible built-in caching.",
   "main": "index.js",
   "devDependencies": {

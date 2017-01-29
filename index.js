@@ -103,16 +103,11 @@ module.exports = function(cache, defaults){
     }
 
     /**
-     * An alias for the .end function because I use ._end and .end for other things
+     * Save the exisitng .end() value ("namespaced" in case of other plugins)
+     * so that we can provide our customized .end() and then call through to
+     * the underlying implementation.
      */
-    Request.execute = Request.end;
-
-    /**
-     * Wraps the .end function so that .resetProps gets called--callable so that no caching logic takes place
-     */
-    Request._end = function(cb){
-      Request.execute(cb);
-    }
+    Request._cache_originalEnd = Request.end;
 
     /**
      * Execute all caching and http logic
@@ -131,7 +126,7 @@ module.exports = function(cache, defaults){
             }
             else{
               if(props.doQuery){
-                _Request._end(function (err, response){
+                _Request._cache_originalEnd(function (err, response){
                   if(err){
                     return utils.callbackExecutor(cb, err, response, key);
                   }
@@ -164,7 +159,7 @@ module.exports = function(cache, defaults){
           });
         }
         else{
-          Request._end(function (err, response){
+          Request._cache_originalEnd(function (err, response){
             if(err){
               return utils.callbackExecutor(cb, err, response, key);
             }
@@ -179,7 +174,7 @@ module.exports = function(cache, defaults){
         }
       }
       else{
-        Request._end(function (err, response){
+        Request._cache_originalEnd(function (err, response){
           return utils.callbackExecutor(cb, err, response, undefined);
         });
       }

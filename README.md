@@ -2,8 +2,6 @@
 
 A superagent plugin providing flexible, built-in caching.
 
-Currently compatible with superagent `1.x`.
-
 # Contents
 
 * [Basic Usage](#basic-usage)

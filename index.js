@@ -27,19 +27,19 @@ module.exports = function(cache, defaults){
 
     /**
      * Remove the given params from the query object after executing an http query and before generating a cache key
-     * @param {array of strings} pruneParams
+     * @param {array of strings} pruneQuery
      */
-    Request.pruneParams = function(pruneParams){
-      props.pruneParams = pruneParams;
+    Request.pruneQuery = function(pruneQuery){
+      props.pruneQuery = pruneQuery;
       return Request;
     }
 
     /**
      * Remove the given options from the headers object after executing an http query and before generating a cache key
-     * @param {boolean} pruneOptions
+     * @param {boolean} pruneHeader
      */
-    Request.pruneOptions = function(pruneOptions){
-      props.pruneOptions = pruneOptions;
+    Request.pruneHeader = function(pruneHeader){
+      props.pruneHeader = pruneHeader;
       return Request;
     }
 
@@ -71,7 +71,7 @@ module.exports = function(cache, defaults){
     }
 
     /**
-     * Whether to cache superagent's http response object when it "empty"--especially useful with .prune and .pruneParams
+     * Whether to cache superagent's http response object when it "empty"--especially useful with .prune and .pruneQuery
      * @param {boolean} cacheWhenEmpty
      */
     Request.cacheWhenEmpty = function(cacheWhenEmpty){

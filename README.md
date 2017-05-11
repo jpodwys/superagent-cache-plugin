@@ -2,6 +2,8 @@
 
 A superagent plugin providing flexible, built-in caching.
 
+Now compatible with superagent `2.x` and `3.x`.
+
 # Contents
 
 * [Basic Usage](#basic-usage)
@@ -14,6 +16,7 @@ A superagent plugin providing flexible, built-in caching.
 * [Supported Caches](#supported-caches)
 * [API](#api)
 * [More Usage Examples](#more-usage-examples)
+* [Breaking Change History](#breaking-change-history)
 * [Release Notes](https://github.com/jpodwys/superagent-cache-plugin/releases)
 
 # Basic Usage
@@ -316,3 +319,12 @@ However, you can only get it when you pass 3 params to the callback's argument l
 * 1 param: the param will always be `response`
 * 2 params: the params will always be `err` and `response`
 * 3 params: the params will always be `err`, `response`, and `key`
+
+# Breaking Change History
+
+#### 2.0.0
+
+* Now compatible with superagent `2.x` and `3.x`
+* `.pruneParams` is now `.pruneQuery` for clarity
+* `.pruneOptions` is now `.pruneHeader` for clarity
+* The `resolve` function passed to `.then` no longer exposes the generated cache key like it did when using superagent `^1.3.0` with superagent-cache `^1.5.0` (but using `.end` still does)

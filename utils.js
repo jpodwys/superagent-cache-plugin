@@ -10,9 +10,9 @@ module.exports = {
     var cleanOptions = null;
     var params = this.getQueryParams(req);
     var options = this.getHeaderOptions(req);
-    if(props.pruneParams || props.pruneOptions){
-      cleanParams = (props.pruneParams) ? this.pruneObj(this.cloneObject(params), props.pruneParams) : params;
-      cleanOptions = (props.pruneOptions) ? this.pruneObj(this.cloneObject(options), props.pruneOptions, true) : options;
+    if(props.pruneQuery || props.pruneHeader){
+      cleanParams = (props.pruneQuery) ? this.pruneObj(this.cloneObject(params), props.pruneQuery) : params;
+      cleanOptions = (props.pruneHeader) ? this.pruneObj(this.cloneObject(options), props.pruneHeader, true) : options;
     }
     return JSON.stringify({
       method: req.method,
@@ -164,8 +164,8 @@ module.exports = {
       doQuery: (typeof d.doQuery === 'boolean') ? d.doQuery : true,
       cacheWhenEmpty: (typeof d.cacheWhenEmpty === 'boolean') ? d.cacheWhenEmpty : true,
       prune: d.prune,
-      pruneParams: d.pruneParams,
-      pruneOptions: d.pruneOptions,
+      pruneQuery: d.pruneQuery,
+      pruneHeader: d.pruneHeader,
       responseProp: d.responseProp,
       expiration: d.expiration,
       forceUpdate: d.forceUpdate,

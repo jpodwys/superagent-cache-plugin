@@ -2,7 +2,7 @@
 
 A superagent plugin providing flexible, built-in caching.
 
-Currently compatible with superagent `1.x`.
+Now compatible with superagent `2.x` and `3.x`.
 
 # Contents
 
@@ -16,6 +16,7 @@ Currently compatible with superagent `1.x`.
 * [Supported Caches](#supported-caches)
 * [API](#api)
 * [More Usage Examples](#more-usage-examples)
+* [Breaking Change History](#breaking-change-history)
 * [Release Notes](https://github.com/jpodwys/superagent-cache-plugin/releases)
 
 # Basic Usage
@@ -93,8 +94,8 @@ All options that can be passed to the `defaults` `require` param can be overwrit
 
 * responseProp
 * prune
-* pruneParams
-* pruneOptions
+* pruneQuery
+* pruneHeader
 * expiration
 * cacheWhenEmpty
 * doQuery
@@ -136,27 +137,6 @@ Same as superagent except that superagent's response object will be cached.
 ## .put(uri), .post(uri), .patch(uri), .del(uri)
 
 Same as superagent except that the generated cache key will be automatically invalidated when these `HTTP` verbs are used.
-
-## .then(resolve, reject)
-
-In its [`1.3.0` release](https://github.com/visionmedia/superagent/releases/tag/v1.3.0), superagent added fake promise support in the form of a `.then()` chainable that accepts two functions. Before superagent `2.x`, this function does not return a real promise. Rather, it calls `.end()` internally and then decides which function (`resolve` or `reject`) to call. (superagent-cache-plugin does not yet support superagent `2.x`.)
-
-> Should work with [`superagent-promise`](https://github.com/lightsofapollo/superagent-promise), [`superagent-bluebird-promise`](https://github.com/KyleAMathews/superagent-bluebird-promise), and [`superagent-promise-plugin`](https://github.com/jomaxx/superagent-promise-plugin) (perhaps others as well).
-
-I've overwritten superagent's `.then()` so that the provided `resolve` function accepts the generate cache key as follows:
-
-```javascript
-superagent
-  .get(uri)
-  .use(superagentCache)
-  .then(function (response, key){
-    // handle response--key is available if desired
-  }, function (err){
-    // handle the error
-  }
-);
-
-```
 
 ## .end(callback ([err,] response [, key]))
 
@@ -216,9 +196,9 @@ superagent
 );
 ```
 
-## .pruneParams(params)
+## .pruneQuery(params)
 
-In the event that you need certain query params to execute a query but cannot have those params as part of your cache key (useful when security or time-related params are sent), use `.pruneParams()` to remove those properties. Pass `.pruneParams()` an array containing the param keys you want omitted from the cache key.
+In the event that you need certain query params to execute a query but cannot have those params as part of your cache key (useful when security or time-related params are sent), use `.pruneQuery()` to remove those properties. Pass `.pruneQuery()` an array containing the param keys you want omitted from the cache key.
 
 #### Arguments
 
@@ -233,16 +213,16 @@ superagent
   .get(uri)
   .use(superagentCache)
   .query(query)
-  .pruneParams(['token'])
+  .pruneQuery(['token'])
   .end(function (error, response){
     // handle response
   }
 );
 ```
 
-## .pruneOptions(options)
+## .pruneHeader(options)
 
-This function works just like the `.pruneParams()` funciton except that it modifies the arguments passed to the `.set()` chainable method (headers) rather than those passed to the `.query()` chainable method.
+This function works just like the `.pruneQuery()` funciton except that it modifies the arguments passed to the `.set()` chainable method (headers) rather than those passed to the `.query()` chainable method.
 
 #### Arguments
 
@@ -257,7 +237,7 @@ superagent
   .get(uri)
   .use(superagentCache)
   .set(options)
-  .pruneOptions(['token'])
+  .pruneHeader(['token'])
   .end(function (error, response){
     // handle response
   }
@@ -339,3 +319,12 @@ However, you can only get it when you pass 3 params to the callback's argument l
 * 1 param: the param will always be `response`
 * 2 params: the params will always be `err` and `response`
 * 3 params: the params will always be `err`, `response`, and `key`
+
+# Breaking Change History
+
+#### 2.0.0
+
+* Now compatible with superagent `2.x` and `3.x`
+* `.pruneParams` is now `.pruneQuery` for clarity
+* `.pruneOptions` is now `.pruneHeader` for clarity
+* The `resolve` function passed to `.then` no longer exposes the generated cache key like it did when using superagent `^1.3.0` with superagent-cache `^1.5.0` (but using `.end` still does)

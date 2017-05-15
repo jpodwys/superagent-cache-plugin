@@ -8,14 +8,13 @@ var utils = require('./utils');
  */
 module.exports = function(cache, defaults){
   var self = this;
-  self.cache = cache;
-  self.defaults = defaults || {};
+  var supportedMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
+  var cacheableMethods = ['GET', 'HEAD'];
+  this.cache = cache;
+  this.defaults = defaults || {};
 
   return function (Request) {
-    var props = utils.cloneObject(self.defaults);
-    props = utils.resetProps(props);
-    var supportedMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
-    var cacheableMethods = ['GET', 'HEAD'];
+    var props = utils.resetProps(self.defaults);
 
     /**
      * Whether to execute an http query if the cache does not have the generated key
@@ -28,19 +27,19 @@ module.exports = function(cache, defaults){
 
     /**
      * Remove the given params from the query object after executing an http query and before generating a cache key
-     * @param {array of strings} pruneParams
+     * @param {array of strings} pruneQuery
      */
-    Request.pruneParams = function(pruneParams){
-      props.pruneParams = pruneParams;
+    Request.pruneQuery = function(pruneQuery){
+      props.pruneQuery = pruneQuery;
       return Request;
     }
 
     /**
      * Remove the given options from the headers object after executing an http query and before generating a cache key
-     * @param {boolean} pruneOptions
+     * @param {boolean} pruneHeader
      */
-    Request.pruneOptions = function(pruneOptions){
-      props.pruneOptions = pruneOptions;
+    Request.pruneHeader = function(pruneHeader){
+      props.pruneHeader = pruneHeader;
       return Request;
     }
 
@@ -72,7 +71,7 @@ module.exports = function(cache, defaults){
     }
 
     /**
-     * Whether to cache superagent's http response object when it "empty"--especially useful with .prune and .pruneParams
+     * Whether to cache superagent's http response object when it "empty"--especially useful with .prune and .pruneQuery
      * @param {boolean} cacheWhenEmpty
      */
     Request.cacheWhenEmpty = function(cacheWhenEmpty){
@@ -90,24 +89,11 @@ module.exports = function(cache, defaults){
     }
 
     /**
-     * Overwrites superagent's fake promise support and adds the generated cache key
-     * Only applies if Request.promise is not set
-     * Fixes Request isse: https://github.com/jpodwys/superagent-cache/issues/38
-     */
-    if(!Request.promise){
-      Request.then = function(fulfill, reject){
-        return Request.end(function (err, response, key) {
-          err ? reject(err) : fulfill(response, key);
-        });
-      }
-    }
-
-    /**
      * Save the exisitng .end() value ("namespaced" in case of other plugins)
      * so that we can provide our customized .end() and then call through to
      * the underlying implementation.
      */
-    Request._cache_originalEnd = Request.end;
+    var end = Request.end;
 
     /**
      * Execute all caching and http logic
@@ -126,7 +112,7 @@ module.exports = function(cache, defaults){
             }
             else{
               if(props.doQuery){
-                _Request._cache_originalEnd(function (err, response){
+                end.call(Request, function (err, response){
                   if(err){
                     return utils.callbackExecutor(cb, err, response, key);
                   }
@@ -159,7 +145,7 @@ module.exports = function(cache, defaults){
           });
         }
         else{
-          Request._cache_originalEnd(function (err, response){
+          end.call(Request, function (err, response){
             if(err){
               return utils.callbackExecutor(cb, err, response, key);
             }
@@ -174,7 +160,7 @@ module.exports = function(cache, defaults){
         }
       }
       else{
-        Request._cache_originalEnd(function (err, response){
+        end.call(Request, function (err, response){
           return utils.callbackExecutor(cb, err, response, undefined);
         });
       }

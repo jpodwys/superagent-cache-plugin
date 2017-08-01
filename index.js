@@ -1,3 +1,4 @@
+const CachePolicy = require('http-cache-semantics');
 var utils = require('./utils');
 
 /**
@@ -67,7 +68,7 @@ module.exports = function(cache, defaults){
      */
     Request.expiration = function(expiration){
       props.expiration = expiration;
-      return Request;
+      return Request.set('cache-control', 'max-age=' + expiration);
     }
 
     /**
@@ -89,7 +90,7 @@ module.exports = function(cache, defaults){
     }
 
     /**
-     * Save the exisitng .end() value ("namespaced" in case of other plugins)
+     * Save the existing .end() value ("namespaced" in case of other plugins)
      * so that we can provide our customized .end() and then call through to
      * the underlying implementation.
      */
@@ -100,37 +101,65 @@ module.exports = function(cache, defaults){
      * @param {function} cb
      */
     Request.end = function(cb){
+      utils.handleReqCacheHeaders(Request, props);
       Request.scRedirectsList = Request.scRedirectsList || [];
       Request.scRedirectsList = Request.scRedirectsList.concat(Request._redirectList);
       if(~supportedMethods.indexOf(Request.method.toUpperCase())){
         var _Request = Request;
         var key = utils.keygen(Request, props);
         if(~cacheableMethods.indexOf(Request.method.toUpperCase())){
-          cache.get(key, function (err, response){
-            if(!err && response && !props.forceUpdate){
-              utils.callbackExecutor(cb, err, response, key);
+          cache.get(key, function (err, entry) {
+            const cachedResponse = entry ? entry.response : undefined;
+            var policy = entry && entry.policy ? CachePolicy.fromObject(entry.policy) : undefined;
+            if(!err && cachedResponse && policy
+              && policy.satisfiesWithoutRevalidation(Request.toJSON()) && !props.forceUpdate) {
+              cachedResponse.headers = policy.responseHeaders();
+              utils.callbackExecutor(cb, err, cachedResponse, key);
             }
             else{
               if(props.doQuery){
+                if (policy) {
+                  const headers = policy.revalidationHeaders(Request.toJSON());
+                  Object.keys(headers).forEach(function(key) {
+                    Request = Request.set(key, headers[key]);
+                  });
+                }
                 end.call(Request, function (err, response){
                   if(err){
+                    if (err.status === 304 && cachedResponse) {
+                      return utils.callbackExecutor(cb, err, cachedResponse, key);
+                    }
                     return utils.callbackExecutor(cb, err, response, key);
                   }
-                  else if(!err && response){
+                  else if(response){
+                    // just in case that superagent would stop handling '304 - Not Modified' as an Error.
+                    if (response.status === 304 && cachedResponse) {
+                      return utils.callbackExecutor(cb, err, cachedResponse, key);
+                    }
                     response.redirects = _Request.scRedirectsList;
+                    policy = new CachePolicy(Request.toJSON(), utils.gutResponse(response));
                     if(props.prune){
                       response = props.prune(response);
                     }
-                    else if(props.responseProp){
+                    else if(props.responseProp) {
                       response = response[props.responseProp] || null;
                     }
                     else{
                       response = utils.gutResponse(response);
                     }
-                    if(!utils.isEmpty(response) || props.cacheWhenEmpty){
-                      cache.set(key, response, props.expiration, function (){
+                    if ((0 !== props.expiration) && (!utils.isEmpty(response) || props.cacheWhenEmpty)) {
+                      if (policy.storable() && policy.timeToLive() > 0) {
+                        const expiration = props.expiration
+                          ? Math.min(props.expiration, Math.round(policy.timeToLive()/1000, 0))
+                          :  Math.round(policy.timeToLive()/1000, 0);
+                        const entry = { policy: policy.toObject() , response: response };
+                        cache.set(key, entry, expiration , function () {
+                          return utils.callbackExecutor(cb, err, response, key);
+                        });
+                      }
+                      else {
                         return utils.callbackExecutor(cb, err, response, key);
-                      });
+                      }
                     }
                     else{
                       return utils.callbackExecutor(cb, err, response, key);
@@ -166,6 +195,6 @@ module.exports = function(cache, defaults){
       }
     }
 
-    return Request;
+    return props.expiration !== undefined ? Request.set('Cache-control', 'max-age=' + props.expiration) : Request;
   }
 }

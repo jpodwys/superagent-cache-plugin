@@ -3,66 +3,93 @@ var expect = require('expect');
 var express = require('express');
 var cModule = require('cache-service-cache-module');
 var cache = new cModule();
-var superagentCache = require('../../index')(cache);
+var superagentCacheModule = require('../../index');
+var superagentCache = superagentCacheModule(cache, { expiration: 1 });
 
 var app = express();
 
+const DEFAULT_CACHE_CONTROL = 'max-age=1';
+
+function setResponseCacheControl(req, res) {
+  res.set('Cache-Control', req.get('cache-control') || DEFAULT_CACHE_CONTROL);
+};
+
 app.get('/one', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {key: 'one'});
 });
 
 app.post('/one', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {key: 'post'});
 });
 
 app.put('/one', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {key: 'put'});
 });
 
 app.patch('/one', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {key: 'patch'});
 });
 
 app.delete('/one', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {key: 'delete'});
 });
 
 app.get('/redirect', function(req, res){
+  setResponseCacheControl(req, res);
   res.redirect('/one');
 });
 
 app.get('/false', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {key: false});
 });
 
 app.get('/params', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {pruneQuery: req.query.pruneQuery, otherParams: req.query.otherParams});
 });
 
 app.get('/options', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(200, {pruneHeader: req.get('pruneHeader'), otherOptions: req.get('otherOptions')});
 });
 
 app.get('/four', function(req, res){
+  setResponseCacheControl(req, res);
   res.send(400, {key: 'one'});
 });
 
 var count = 0;
 app.get('/count', function(req, res){
   count++;
+  setResponseCacheControl(req, res);
+  if (req.query.etag) {
+    res.set('ETag', '12345');
+  }
+  if (req.query.lastmodified) {
+    res.set('Last-Modified', 'Wed, 21 Oct 2015 07:28:00 GMT');
+  }
   res.send(200, {count: count});
 });
 
 app.listen(3000);
 
-describe('superagentCache', function(){
+describe('superagentCache', function() {
 
   describe('API tests', function () {
 
     it('.end() should not require the \'err\' callback param', function (done) {
       superagent
         .get('localhost:3000/one')
+        // .set('Cache-Control', 'max-age=0')
+        // .set('Expires', 'Wed, 1 Aug 2017 10:22:00 GMT')
         .use(superagentCache)
+        .expiration(5)
         .end(function (response){
           expect(response.body.key).toBe('one');
           done();
@@ -101,18 +128,13 @@ describe('superagentCache', function(){
       superagent
         .get('localhost:3000/one')
         .use(superagentCache)
-        .expiration(0.001)
+        .expiration(0)
         .end(function (err, response, key){
           expect(response.body.key).toBe('one');
-          cache.get(key, function (err, result){
-            expect(result.body.key).toBe('one');
+          cache.get(key, function (err, entry){
+            expect(entry).toBe(null);
+            done();
           });
-          setTimeout(function(){
-            cache.get(key, function (err, result){
-              expect(result).toBe(null);
-              done();
-            });
-          }, 20);
         }
       );
     });
@@ -125,10 +147,11 @@ describe('superagentCache', function(){
         .get('localhost:3000/false')
         .use(superagentCache)
         .prune(prune)
+        .cacheWhenEmpty(true)
         .end(function (err, response, key){
           expect(response).toBe(false);
-          cache.get(key, function (err, response){
-            expect(response).toBe(false);
+          cache.get(key, function (err, entry){
+            expect(entry.response).toBe(false);
             done();
           });
         }
@@ -146,8 +169,8 @@ describe('superagentCache', function(){
         .cacheWhenEmpty(false)
         .end(function (err, response, key){
           expect(response).toBe(false);
-          cache.get(key, function (err, response){
-            expect(response).toBe(null);
+          cache.get(key, function (err, entry){
+            expect(entry).toBe(null);
             done();
           });
         }
@@ -210,7 +233,6 @@ describe('superagentCache', function(){
         .set({pruneHeader: true, otherOptions: false})
         .pruneHeader(['pruneHeader'])
         .end(function (err, response, key){
-          //console.log(key);
           expect(response.body.pruneHeader).toBe('true');
           expect(response.body.otherOptions).toBe('false');
           //Before superagent 1.7.0, superagent converts headers to lower case. To be backwards compatible,
@@ -235,7 +257,7 @@ describe('superagentCache', function(){
           expect(response).toBe(null);
           done();
         }
-      );
+      )
     });
 
     it('.end() should not set \'err\' callback param on error', function (done) {
@@ -263,16 +285,16 @@ describe('superagentCache', function(){
         .cacheWhenEmpty(false)
         .prune(prune)
         .end(function (err, response, key) {
-          cache.get(key, function (err, response){
-            expect(response).toBe(null);
+          cache.get(key, function (err, entry){
+            expect(entry).toBe(null);
             superagent
               .get('localhost:3000/one')
               .use(superagentCache)
               .cacheWhenEmpty(false)
               .prune(prune)
               .end(function (err, response, key) {
-                cache.get(key, function (err, response){
-                  expect(response).toBe(200);
+                cache.get(key, function (err, entry){
+                  expect(entry.response).toBe(200);
                   done();
                 });
               }
@@ -292,8 +314,8 @@ describe('superagentCache', function(){
         .use(superagentCache)
         .end(function (err, response, key){
           expect(response.body.key).toBe('one');
-          cache.get(key, function (err, response){
-            expect(response.body.key).toBe('one');
+          cache.get(key, function (err, entry){
+            expect(entry.response.body.key).toBe('one');
             done();
           });
         }
@@ -306,8 +328,8 @@ describe('superagentCache', function(){
         .use(superagentCache)
         .end(function (err, response, key){
           expect(response.body.key).toBe('post');
-          cache.get(key, function (err, response) {
-            expect(response).toBe(null);
+          cache.get(key, function (err, entry) {
+            expect(entry).toBe(null);
             done();
           });
         }
@@ -321,8 +343,8 @@ describe('superagentCache', function(){
         .end(function (err, response, key){
           expect(key).toBe('{"method":"GET","uri":"http://localhost:3000/redirect","params":null,"options":{}}');
           expect(response.body.key).toBe('one');
-          cache.get(key, function (err, response) {
-            expect(response.body.key).toBe('one');
+          cache.get(key, function (err, entry) {
+            expect(entry.response.body.key).toBe('one');
             done();
           });
         }
@@ -335,15 +357,15 @@ describe('superagentCache', function(){
         .use(superagentCache)
         .end(function (err, response, key){
           expect(response.body.key).toBe('one');
-          cache.get(key, function (err, response) {
-            expect(response.body.key).toBe('one');
+          cache.get(key, function (err, entry) {
+            expect(entry.response.body.key).toBe('one');
             superagent
               .put('localhost:3000/one')
               .use(superagentCache)
               .end(function (err, response, key){
                 expect(response.body.key).toBe('put');
-                cache.get(key, function (err, response) {
-                  expect(response).toBe(null);
+                cache.get(key, function (err, entry) {
+                  expect(entry).toBe(null);
                   done();
                 });
               }
@@ -359,15 +381,15 @@ describe('superagentCache', function(){
         .use(superagentCache)
         .end(function (err, response, key){
           expect(response.body.key).toBe('one');
-          cache.get(key, function (err, response) {
-            expect(response.body.key).toBe('one');
+          cache.get(key, function (err, entry) {
+            expect(entry.response.body.key).toBe('one');
             superagent
               .patch('localhost:3000/one')
               .use(superagentCache)
               .end(function (err, response, key){
                 expect(response.body.key).toBe('patch');
-                cache.get(key, function (err, response) {
-                  expect(response).toBe(null);
+                cache.get(key, function (err, entry) {
+                  expect(entry).toBe(null);
                   done();
                 });
               }
@@ -383,15 +405,15 @@ describe('superagentCache', function(){
         .use(superagentCache)
         .end(function (err, response, key){
           expect(response.body.key).toBe('one');
-          cache.get(key, function (err, response){
-            expect(response.body.key).toBe('one');
+          cache.get(key, function (err, entry){
+            expect(entry.response.body.key).toBe('one');
             superagent
               .del('localhost:3000/one')
               .use(superagentCache)
               .end(function (err, response, key){
                 expect(response.body.key).toBe('delete');
-                cache.get(key, function (err, response){
-                  expect(response).toBe(null);
+                cache.get(key, function (err, entry){
+                  expect(entry).toBe(null);
                   done();
                 });
               }
@@ -406,7 +428,7 @@ describe('superagentCache', function(){
   describe('configurability tests', function () {
 
     it('Should be able to configure global settings: doQuery', function (done) {
-      superagentCache.defaults = {doQuery: false, expiration: 1};
+      superagentCache = superagentCacheModule(cache, {doQuery: false, expiration: 1});
       superagent
         .get('localhost:3000/one')
         .use(superagentCache)
@@ -420,15 +442,15 @@ describe('superagentCache', function(){
     });
 
     it('Global settings should be locally overwritten by chainables: doQuery', function (done) {
-      superagentCache.defaults = {doQuery: false, expiration: 1};
+      superagentCache = superagentCacheModule(cache, {doQuery: false, expiration: 1});
       superagent
         .get('localhost:3000/one')
         .use(superagentCache)
         .doQuery(true)
         .end(function (err, response, key){
-          cache.get(key, function (err, response) {
-            expect(response).toNotBe(null);
-            expect(response.body.key).toBe('one');
+          cache.get(key, function (err, entry) {
+            expect(entry.response).toNotBe(null);
+            expect(entry.response.body.key).toBe('one');
             done();
           });
         }
@@ -436,22 +458,51 @@ describe('superagentCache', function(){
     });
 
     it('Should be able to configure global settings: expiration', function (done) {
-      superagentCache.defaults = {doQuery: false, expiration: 1};
+      superagentCache = superagentCacheModule(cache, { expiration: 1 });
+      superagent
+        .get('localhost:3000/one')
+        .use(superagentCache)
+        .end(function (err, response, key){
+          cache.get(key, function (err, entry) {
+            expect(entry.response).toNotBe(null);
+            expect(entry.response.body.key).toBe('one');
+            setTimeout(function(){
+              superagent
+                .get('localhost:3000/one')
+                .use(superagentCache)
+                .doQuery(false)
+                .end(function (err, response, key){
+                  cache.get(key, function (err, entry) {
+                    expect(entry).toBe(null);
+                    done();
+                  });
+                }
+              );
+            }, 2000);
+          });
+        }
+      );
+    });
+
+    it('Global settings should be locally overwritten by chainables: expiration', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: false, expiration: 1});
       superagent
         .get('localhost:3000/one')
         .use(superagentCache)
         .doQuery(true)
+        .expiration(5)
         .end(function (err, response, key){
-          cache.get(key, function (err, response) {
-            expect(response).toNotBe(null);
-            expect(response.body.key).toBe('one');
+          cache.get(key, function (err, entry) {
+            expect(entry.response).toNotBe(null);
+            expect(entry.response.body.key).toBe('one');
             setTimeout(function(){
               superagent
                 .get('localhost:3000/one')
                 .use(superagentCache)
                 .end(function (err, response, key){
-                  cache.get(key, function (err, response) {
-                    expect(response).toBe(null);
+                  cache.get(key, function (err, entry) {
+                    expect(entry.response).toNotBe(null);
+                    expect(entry.response.body.key).toBe('one');
                     done();
                   });
                 }
@@ -462,31 +513,132 @@ describe('superagentCache', function(){
       );
     });
 
-    it('Global settings should be locally overwritten by chainables: expiration', function (done) {
-      superagentCache.defaults = {doQuery: false, expiration: 1};
+    it('Global TTL settings should be overwritten by the one calculated from the response cache-control header', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
+      count = 0;
       superagent
-        .get('localhost:3000/one')
+        .get('localhost:3000/count')
         .use(superagentCache)
-        .doQuery(true)
-        .expiration(2)
+        .set('Cache-Control', 'max-age=3')
         .end(function (err, response, key){
-          cache.get(key, function (err, response) {
-            expect(response).toNotBe(null);
-            expect(response.body.key).toBe('one');
-            setTimeout(function(){
-              superagent
-                .get('localhost:3000/one')
-                .use(superagentCache)
-                .end(function (err, response, key){
-                  cache.get(key, function (err, response) {
-                    expect(response).toNotBe(null);
-                    expect(response.body.key).toBe('one');
-                    done();
-                  });
-                }
-              );
-            }, 1000);
+          expect(response).toNotBe(null);
+          expect(response.body.count).toBe(1);
+          setTimeout(function(){
+            superagent
+              .get('localhost:3000/count')
+              .use(superagentCache)
+              .set('Cache-Control', 'max-age=3')
+              .end(function (err, response, key){
+                expect(response).toNotBe(null);
+                expect(response.body.count).toBe(1);
+                done();
+              }
+            );
+          }, 1000);
+        }
+      );
+    });
+
+    it('Cache should be switched off by \'cache-control: no-cache\' header', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
+      count = 0;
+      superagent
+        .get('localhost:3000/count')
+        .use(superagentCache)
+        .set('Cache-Control', 'no-cache')
+        .end(function (err, response, key){
+          cache.get(key, function (err, entry) {
+            expect(entry).toBe(null);
+            done();
           });
+        }
+      );
+    });
+
+    it('Cache should be switched off by \'cache-control: no-store\' header', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
+      count = 0;
+      superagent
+        .get('localhost:3000/count')
+        .use(superagentCache)
+        .set('Cache-Control', 'no-store')
+        .end(function (err, response, key){
+          cache.get(key, function (err, entry) {
+            expect(entry).toBe(null);
+            done();
+          });
+        }
+      );
+    });
+
+    it('Cache should be switched off by \'cache-control: max-age=0\' header', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
+      count = 0;
+      superagent
+        .get('localhost:3000/count')
+        .use(superagentCache)
+        .set('Cache-Control', 'max-age=0')
+        .end(function (err, response, key){
+          cache.get(key, function (err, entry) {
+            expect(entry).toBe(null);
+            done();
+          });
+        }
+      );
+    });
+
+    it('Should return cached response, when response is cacheable and Etag doesn\'t change', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
+      count = 0;
+      superagent
+        .get('localhost:3000/count')
+        .use(superagentCache)
+        .query({ etag: true })
+        .pruneQuery(['etag'])
+        .end(function (err, response, key){
+          expect(response).toNotBe(null);
+          expect(response.body.count).toBe(1);
+          setTimeout(function(){
+            superagent
+              .get('localhost:3000/count')
+              .use(superagentCache)
+              .query({ etag: true })
+              .pruneQuery(['etag'])
+              .end(function (err, response, key){
+                expect(response).toNotBe(null);
+                expect(response.body.count).toBe(1);
+                done();
+              }
+            );
+          }, 990);
+        }
+      );
+    });
+
+    it('Should return cached response, when response is cacheable and Last-Modified doesn\'t change', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
+      count = 0;
+      superagent
+        .get('localhost:3000/count')
+        .use(superagentCache)
+        .query({ lastmodified: true })
+        .pruneQuery(['lastmodified'])
+        .end(function (err, response, key){
+          expect(response).toNotBe(null);
+          expect(response.body.count).toBe(1);
+          setTimeout(function(){
+            superagent
+              .get('localhost:3000/count')
+              .use(superagentCache)
+              .query({ lastmodified: true })
+              .pruneQuery(['lastmodified'])
+              .end(function (err, response, key){
+                expect(response).toNotBe(null);
+                expect(response.body.count).toBe(1);
+                done();
+              }
+            );
+          }, 990);
         }
       );
     });
@@ -496,12 +648,15 @@ describe('superagentCache', function(){
   describe('forceUpdate tests', function () {
 
     it('.forceUpdate() should prevent the module from hitting the cache', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 2});
+      count = 0;
+      cache.flush();
       superagent
         .get('localhost:3000/count')
         .use(superagentCache)
         .end(function (err, response, key){
-          cache.get(key, function (err, response){
-            expect(response.body.count).toBe(1);
+          cache.get(key, function (err, entry){
+            expect(entry.response.body.count).toBe(1);
             superagent
               .get('localhost:3000/count')
               .use(superagentCache)

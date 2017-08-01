@@ -1,3 +1,4 @@
+const CachePolicy = require('http-cache-semantics');
 module.exports = {
   /**
    * Generate a cache key unique to this query
@@ -46,16 +47,23 @@ module.exports = {
    * Find and extract headers
    * @param {object} reg
    */
-  getHeaderOptions: function(req){
-    //I have to remove the User-Agent header ever since superagent 1.7.0
-    if(req && req._header){
-      return this.pruneObj(req._header, ['User-Agent', 'user-agent']);
+  getHeaderOptions: function(_req){
+    // I have to remove the User-Agent header ever since superagent 1.7.0
+    // The cache-control header must also be removed.
+    // Clone the request first, as we don't want to remove the headers from the original one, do we?
+    const req = JSON.parse(JSON.stringify(_req));
+    const headersToPrune = ['User-Agent', 'user-agent', 'Cache-Control', 'cache-control'];
+    if(req && req.headers){
+      return this.pruneObj(req.headers, headersToPrune);
+    }
+    else if(req && req._header){
+      return this.pruneObj(req._header, headersToPrune);
     }
     else if(req && req.req && req.req._headers){
-      return this.pruneObj(req.req._headers, ['User-Agent', 'user-agent']);
+      return this.pruneObj(req.req._headers, headersToPrune);
     }
     else if(req && req.header){
-      return this.pruneObj(req.header, ['User-Agent', 'user-agent']);
+      return this.pruneObj(req.header, headersToPrune);
     }
     return null;
   },
@@ -191,5 +199,29 @@ module.exports = {
     else{
       throw new Error('UnsupportedCallbackException: Your .end() callback must pass at least one argument.');
     }
+  },
+
+  /**
+   * Handles the request cache headers and eventually modifies the per request properties affecting caching.
+   * This method is called in early stage, before any attempt to execute the request against the HTTP server.
+   *
+   * @param {object} req    - The request object.
+   * @param {object} props  - The request-basis properties, which affect cache behavior.
+   * @returns {object} The modified properties.
+   */
+  handleReqCacheHeaders: function(req, props) {
+    const cacheControl = req.get('cache-control');
+    if (typeof cacheControl === 'string' && cacheControl.toLowerCase().indexOf('only-if-cached') !== -1) {
+      props.doQuery = false;
+    }
+    // We cheat the policy a bit here, giving the request instead of response (we don't have it at this stage),
+    // as we want to parse the request headers for the caching control related values,
+    // which could override the 'props' values.
+    const policy = new CachePolicy(req.toJSON(), req.toJSON());
+    // The 'no-store' will be checked here.
+    // Note: The default 'policy.timeToLive()' is '0' (means when there's no Expires or max-age specified).
+    // The legacy method 'expiration()' will set the policy TTL value via the Cache-Control max-age value,
+    // so no conflicts here.
+    props.expiration = policy.storable() ? Math.round(policy.timeToLive()/1000, 0) : 0;
   }
 }

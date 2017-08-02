@@ -52,7 +52,7 @@ module.exports = {
     // The cache-control header must also be removed.
     // Clone the request first, as we don't want to remove the headers from the original one, do we?
     const req = JSON.parse(JSON.stringify(_req));
-    const headersToPrune = ['User-Agent', 'user-agent', 'Cache-Control', 'cache-control'];
+    const headersToPrune = ['user-agent', 'cache-control'];
     if(req && req.headers){
       return this.pruneObj(req.headers, headersToPrune);
     }
@@ -116,13 +116,17 @@ module.exports = {
    * @param {boolean} isOptions
    */
   pruneObj: function(obj, props, isOptions){
-    for(var i = 0; i < props.length; i++){
-      var prop = props[i];
-      if(isOptions){
-        delete obj[prop.toLowerCase()];
+    const lowerCasedProps = props.map(function (item) {
+      return item.toLowerCase();
+    });
+    Object.keys(obj).forEach(function (key) {
+      if (lowerCasedProps.indexOf(key.toLowerCase()) !== -1) {
+        if(isOptions){
+          delete obj[key.toLowerCase()];
+        }
+        delete obj[key];
       }
-      delete obj[prop];
-    }
+    });
     return obj;
   },
 

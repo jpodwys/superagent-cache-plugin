@@ -534,7 +534,7 @@ describe('superagentCache', function() {
                 done();
               }
             );
-          }, 1000);
+          }, 1200);
         }
       );
     });

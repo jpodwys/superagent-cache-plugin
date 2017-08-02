@@ -222,6 +222,6 @@ module.exports = {
     // Note: The default 'policy.timeToLive()' is '0' (means when there's no Expires or max-age specified).
     // The legacy method 'expiration()' will set the policy TTL value via the Cache-Control max-age value,
     // so no conflicts here.
-    props.expiration = policy.storable() ? Math.round(policy.timeToLive()/1000, 0) : 0;
+    props.expiration = policy.storable() ? Math.round(policy.timeToLive() / 1000) : 0;
   }
 }

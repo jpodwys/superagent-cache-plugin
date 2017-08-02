@@ -150,8 +150,8 @@ module.exports = function(cache, defaults){
                     if ((0 !== props.expiration) && (!utils.isEmpty(response) || props.cacheWhenEmpty)) {
                       if (policy.storable() && policy.timeToLive() > 0) {
                         const expiration = props.expiration
-                          ? Math.min(props.expiration, Math.round(policy.timeToLive()/1000, 0))
-                          :  Math.round(policy.timeToLive()/1000, 0);
+                          ? Math.min(props.expiration, Math.round(policy.timeToLive() / 1000))
+                          :  Math.round(policy.timeToLive() / 1000);
                         const entry = { policy: policy.toObject() , response: response };
                         cache.set(key, entry, expiration , function () {
                           return utils.callbackExecutor(cb, err, response, key);

@@ -105,7 +105,7 @@ module.exports = function(cache, defaults){
     var cachedEntry;
 
     // Special handling for the '304 Not Modified' case, which will only come out
-    // in case of the server responses with 'ETag' and 'Modification-Date'.
+    // in case of server responses with 'ETag' and/or 'Last-Modified' headers.
     Request.on('response', function (res) {
       if (res.status === 304 && cachedEntry) {
         res.status = cachedEntry.response.status;

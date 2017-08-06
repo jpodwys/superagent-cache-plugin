@@ -427,6 +427,24 @@ describe('superagentCache', function() {
 
   describe('configurability tests', function () {
 
+    beforeEach(function (done) {
+      cache.flush();
+      done();
+    });
+
+    it('Should return null response when \'only-if-cached\' is set in the request header.', function (done) {
+      superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
+      superagent
+        .get('localhost:3000/one')
+        .use(superagentCache)
+        .set('cache-control', 'only-if-cached')
+        .end(function (err, response, key){
+          expect(response).toBe(null);
+          done();
+        }
+      );
+    });
+
     it('Should be able to configure global settings: doQuery', function (done) {
       superagentCache = superagentCacheModule(cache, {doQuery: false, expiration: 1});
       superagent
@@ -598,6 +616,7 @@ describe('superagentCache', function() {
         .end(function (err, response, key){
           expect(response).toNotBe(null);
           expect(response.body.count).toBe(1);
+          // should response with 304 and refresh the policy.
           setTimeout(function(){
             superagent
               .get('localhost:3000/count')
@@ -607,7 +626,20 @@ describe('superagentCache', function() {
               .end(function (err, response, key){
                 expect(response).toNotBe(null);
                 expect(response.body.count).toBe(1);
-                done();
+                // should serve cached response according to refreshed policy.
+                setTimeout(function(){
+                  superagent
+                    .get('localhost:3000/count')
+                    .use(superagentCache)
+                    .query({ etag: true })
+                    .pruneQuery(['etag'])
+                    .end(function (err, response, key){
+                      expect(response).toNotBe(null);
+                      expect(response.body.count).toBe(1);
+                      done();
+                    }
+                  );
+                }, 100);
               }
             );
           }, 990);

@@ -90,6 +90,40 @@ module.exports = function(cache, defaults){
     }
 
     /**
+     * Array of header names, which should be bypassed from a request to a response.
+     * This is useful for eg. some correlation ID, which binds a request with a response
+     * and could be an issue when returning the cached response.
+     * Note, that bypassed headers are copied only to cached responses.
+     *
+     * @param {string|string[]} bypassHeaders
+     */
+    Request.bypassHeaders = function(bypassHeaders){
+      props.bypassHeaders = (typeof bypassHeaders === 'string') ? [bypassHeaders] : bypassHeaders;
+      return Request;
+    }
+
+    var cachedEntry;
+
+    // Special handling for the '304 Not Modified' case, which will only come out
+    // in case of the server responses with 'ETag' and 'Modification-Date'.
+    Request.on('response', function (res) {
+      if (res.status === 304 && cachedEntry) {
+        res.status = cachedEntry.response.status;
+        res.header = CachePolicy.fromObject(cachedEntry.policy).responseHeaders();
+        utils.setResponseHeader(res, 'x-cache', 'HIT');
+        utils.copyBypassHeaders(res, Request, props);
+        res.body = cachedEntry.response.body;
+        res.text = cachedEntry.response.text;
+        // update the cache entry
+        const key = utils.keygen(Request, props);
+        const policy = CachePolicy.fromObject(cachedEntry.policy).revalidatedPolicy(Request.toJSON(), res).policy;
+        cachedEntry.policy = policy.toObject();
+        cache.set(key, cachedEntry, utils.getExpiration(props, policy));
+        cachedEntry = undefined;
+      }
+    });
+
+    /**
      * Save the existing .end() value ("namespaced" in case of other plugins)
      * so that we can provide our customized .end() and then call through to
      * the underlying implementation.
@@ -109,12 +143,17 @@ module.exports = function(cache, defaults){
         var key = utils.keygen(Request, props);
         if(~cacheableMethods.indexOf(Request.method.toUpperCase())){
           cache.get(key, function (err, entry) {
+            cachedEntry = entry;
             const cachedResponse = entry ? entry.response : undefined;
             var policy = entry && entry.policy ? CachePolicy.fromObject(entry.policy) : undefined;
+            if (cachedResponse && policy) {
+              cachedResponse.header = policy.responseHeaders();
+              utils.setResponseHeader(cachedResponse, 'x-cache', 'HIT');
+              utils.copyBypassHeaders(cachedResponse, Request, props);
+            }
             if(!err && cachedResponse && policy
               && policy.satisfiesWithoutRevalidation(Request.toJSON()) && !props.forceUpdate) {
-              cachedResponse.headers = policy.responseHeaders();
-              utils.callbackExecutor(cb, err, cachedResponse, key);
+              return utils.callbackExecutor(cb, null, cachedResponse, key, Request);
             }
             else{
               if(props.doQuery){
@@ -126,18 +165,11 @@ module.exports = function(cache, defaults){
                 }
                 end.call(Request, function (err, response){
                   if(err){
-                    if (err.status === 304 && cachedResponse) {
-                      return utils.callbackExecutor(cb, err, cachedResponse, key);
-                    }
                     return utils.callbackExecutor(cb, err, response, key);
                   }
                   else if(response){
-                    // just in case that superagent would stop handling '304 - Not Modified' as an Error.
-                    if (response.status === 304 && cachedResponse) {
-                      return utils.callbackExecutor(cb, err, cachedResponse, key);
-                    }
                     response.redirects = _Request.scRedirectsList;
-                    policy = new CachePolicy(Request.toJSON(), utils.gutResponse(response));
+                    policy = new CachePolicy(Request.toJSON(), utils.gutResponse(response, Request));
                     if(props.prune){
                       response = props.prune(response);
                     }
@@ -145,24 +177,25 @@ module.exports = function(cache, defaults){
                       response = response[props.responseProp] || null;
                     }
                     else{
-                      response = utils.gutResponse(response);
+                      response = utils.gutResponse(response, Request);
                     }
+                    utils.setResponseHeader(response, 'x-cache', 'MISS');
                     if ((0 !== props.expiration) && (!utils.isEmpty(response) || props.cacheWhenEmpty)) {
                       if (policy.storable() && policy.timeToLive() > 0) {
-                        const expiration = props.expiration
-                          ? Math.min(props.expiration, Math.round(policy.timeToLive() / 1000))
-                          :  Math.round(policy.timeToLive() / 1000);
+                        // The TTL in underlying caches will be policy TTL x 2, as we want to allow for
+                        // further serving of the stale objects (when the policy allows for that).
+                        const expiration = utils.getExpiration(props, policy);
                         const entry = { policy: policy.toObject() , response: response };
                         cache.set(key, entry, expiration , function () {
-                          return utils.callbackExecutor(cb, err, response, key);
+                          return utils.callbackExecutor(cb, null, response, key);
                         });
                       }
                       else {
-                        return utils.callbackExecutor(cb, err, response, key);
+                        return utils.callbackExecutor(cb, null, response, key);
                       }
                     }
                     else{
-                      return utils.callbackExecutor(cb, err, response, key);
+                      return utils.callbackExecutor(cb, null, response, key);
                     }
                   }
                 });
@@ -194,7 +227,6 @@ module.exports = function(cache, defaults){
         });
       }
     }
-
     return props.expiration !== undefined ? Request.set('Cache-control', 'max-age=' + props.expiration) : Request;
   }
 }

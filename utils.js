@@ -241,7 +241,7 @@ module.exports = {
       }
       // the expiration can also be set via the Request header.
       const maxAgeMatch = cacheControl.toLowerCase().match(/^(.*max-age=)(\d*).*$/);
-      if (maxAgeMatch) {
+      if (maxAgeMatch && maxAgeMatch.length > 2 && maxAgeMatch[2] !== '') {
         props.expiration = parseInt(maxAgeMatch[2]);
       }
     }
@@ -267,9 +267,7 @@ module.exports = {
    * @returns {number} The expiration (TTL) time in seconds.
    */
   getExpiration: function (props, policy) {
-    return props.expiration
-      ? Math.min(props.expiration * 2, Math.round(policy.timeToLive() * 2 / 1000))
-      :  Math.round(policy.timeToLive() * 2 / 1000);
+    return Math.min(props.expiration * 2 || Number.MAX_VALUE, Math.round(policy.timeToLive() * 2 / 1000));
   },
 
   /**

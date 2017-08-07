@@ -100,6 +100,7 @@ All options that can be passed to the `defaults` `require` param can be overwrit
 * cacheWhenEmpty
 * doQuery
 * forceUpdate
+* bypassHeaders
 
 # The `Cache-Control` request/response headers related behavior
 
@@ -295,6 +296,43 @@ Tells `superagent-cache-plugin` to perform an ajax call regardless of whether th
 #### Arguments
 
 * bool: boolean, default: false
+
+## .bypassHeaders(headerNames)
+
+Tells `superagent-cache-plugin` to copy given headers from the current executing request to the response.
+This is useful for eg. some correlation ID, which binds a request with a response and could be an issue when returning a cached response.
+**Note** Bypassed headers are copied only to cached responses.
+
+#### Arguments
+
+* headerNames: string or array of strings
+
+#### Example
+
+```javascript
+//the superagent query will be executed with all headers
+//but the key used to store the superagent response will be generated without the 'bypassHeaders' header keys
+//and the response will have those keys set to the values from the request headers, when served from a cache.
+var correlationId = 0;
+superagent
+  .get(uri)
+  .use(superagentCache)
+  .expiration(1)
+  .bypassHeaders(['x-correlation-id'])
+  .set('x-correlation-id', correlationId++)
+  .end(function (error, response){
+    superagent
+      .get(uri)
+      .use(superagentCache)
+      .bypassHeaders(['x-correlation-id'])
+      .set('x-correlation-id', correlationId++)
+      .end(function (error, response){
+        expect(response.header['x-cache']).toBe('HIT');
+        expect(response.header['x-correlation-id']).toBe(1);
+      });
+  }
+);
+```
 
 ## superagentCache.cache
 

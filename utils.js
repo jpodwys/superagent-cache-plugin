@@ -11,7 +11,11 @@ module.exports = {
     var cleanOptions = null;
     var params = this.getQueryParams(req);
     var options = this.getHeaderOptions(req);
-    props.pruneHeader = ['if-none-match', 'if-modified-since'].concat(props.pruneHeader || []);
+    // prune headers together with revalidation headers added internally by superagent
+    // and optional 'bypassHeaders' which are likely changing per request and should not
+    // be used to calculate the cache key.
+    props.pruneHeader = ['if-none-match', 'if-modified-since']
+      .concat(props.pruneHeader || [], props.bypassHeaders || []);
     if(props.pruneQuery || props.pruneHeader){
       cleanParams = (props.pruneQuery) ? this.pruneObj(this.cloneObject(params), props.pruneQuery) : params;
       cleanOptions = (props.pruneHeader) ? this.pruneObj(this.cloneObject(options), props.pruneHeader, true) : options;

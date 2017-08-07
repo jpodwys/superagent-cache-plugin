@@ -675,6 +675,37 @@ describe('superagentCache', function() {
       );
     });
 
+    it('Should return cached response, with proper handling of bypassed headers', function (done) {
+      superagentCache = superagentCacheModule(cache, {
+        doQuery: true,
+        expiration: 1,
+        bypassHeaders: ['x-correlation-id']
+      });
+      count = 0;
+      var correlationId = 0;
+      superagent
+        .get('localhost:3000/count')
+        .use(superagentCache)
+        .set('x-correlation-id', correlationId++)
+        .end(function (err, response, key){
+          expect(response).toNotBe(null);
+          expect(response.body.count).toBe(1);
+          superagent
+            .get('localhost:3000/count')
+            .use(superagentCache)
+            .set('x-correlation-id', correlationId++)
+            .end(function (err, response, key){
+                expect(response).toNotBe(null);
+                expect(response.body.count).toBe(1);
+                expect(response.header['x-cache']).toBe('HIT');
+                expect(response.header['x-correlation-id']).toBe(1);
+                done();
+              }
+            );
+        }
+      );
+    });
+
   });
 
   describe('forceUpdate tests', function () {

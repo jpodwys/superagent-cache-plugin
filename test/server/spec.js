@@ -254,7 +254,7 @@ describe('superagentCache', function() {
         .use(superagentCache)
         .doQuery(false)
         .end(function (err, response, key){
-          expect(response).toBe(null);
+          expect(response.status).toBe(504);
           done();
         }
       )
@@ -432,14 +432,14 @@ describe('superagentCache', function() {
       done();
     });
 
-    it('Should return null response when \'only-if-cached\' is set in the request header.', function (done) {
+    it('Should return 504 response when \'only-if-cached\' is set in the request header.', function (done) {
       superagentCache = superagentCacheModule(cache, {doQuery: true, expiration: 1});
       superagent
         .get('localhost:3000/one')
         .use(superagentCache)
         .set('cache-control', 'only-if-cached')
         .end(function (err, response, key){
-          expect(response).toBe(null);
+          expect(response.status).toBe(504);
           done();
         }
       );
@@ -451,6 +451,7 @@ describe('superagentCache', function() {
         .get('localhost:3000/one')
         .use(superagentCache)
         .end(function (err, response, key){
+          expect(response.status).toBe(504);
           cache.get(key, function (err, response) {
             expect(response).toBe(null);
             done();
@@ -639,7 +640,7 @@ describe('superagentCache', function() {
                       done();
                     }
                   );
-                }, 100);
+                }, 50);
               }
             );
           }, 990);

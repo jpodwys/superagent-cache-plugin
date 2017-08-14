@@ -108,17 +108,20 @@ module.exports = function(cache, defaults){
     // in case of server responses with 'ETag' and/or 'Last-Modified' headers.
     Request.on('response', function (res) {
       if (res.status === 304 && cachedEntry) {
-        res.status = cachedEntry.response.status;
-        res.header = CachePolicy.fromObject(cachedEntry.policy).responseHeaders();
-        utils.setResponseHeader(res, 'x-cache', 'HIT');
-        utils.copyBypassHeaders(res, Request, props);
-        res.body = cachedEntry.response.body;
-        res.text = cachedEntry.response.text;
         // update the cache entry
         const key = utils.keygen(Request, props);
         const policy = CachePolicy.fromObject(cachedEntry.policy).revalidatedPolicy(Request.toJSON(), res).policy;
         cachedEntry.policy = policy.toObject();
         cache.set(key, cachedEntry, utils.getExpiration(props, policy));
+        // modify response
+        res.status = cachedEntry.response.status;
+        res.statusCode = cachedEntry.response.statusCode;
+        res.header = policy.responseHeaders();
+        utils.setResponseHeader(res, 'x-cache', 'HIT');
+        utils.copyBypassHeaders(res, Request, props);
+        res.body = cachedEntry.response.body;
+        res.text = cachedEntry.response.text;
+        // cleanup
         cachedEntry = undefined;
       }
     });
@@ -153,7 +156,8 @@ module.exports = function(cache, defaults){
             }
             if(!err && cachedResponse && policy
               && policy.satisfiesWithoutRevalidation(Request.toJSON()) && !props.forceUpdate) {
-              return utils.callbackExecutor(cb, null, cachedResponse, key, Request);
+              // Return the clone of the cached response.
+              return utils.callbackExecutor(cb, null, JSON.parse(JSON.stringify(cachedResponse)), key, Request);
             }
             else{
               if(props.doQuery){
@@ -201,7 +205,14 @@ module.exports = function(cache, defaults){
                 });
               }
               else{
-                return utils.callbackExecutor(cb, null, null, key);
+                // This is actually the 'only-if-cached' condition
+                // (doQuery=false is exactly the same intention).
+                // Returning the response status 504 as the RFC2616 states about the 'only-if-cached'.
+                // See: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9.4.
+                return utils.callbackExecutor(cb, null, {
+                  status: 504,
+                  header: {},
+                }, key);
               }
             }
           });

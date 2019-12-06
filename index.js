@@ -119,7 +119,7 @@ module.exports = function(cache, defaults){
                   else if(!err && response){
                     response.redirects = _Request.scRedirectsList;
                     if(props.prune){
-                      response = props.prune(response);
+                      response = props.prune(response, utils.gutResponse);
                     }
                     else if(props.responseProp){
                       response = response[props.responseProp] || null;

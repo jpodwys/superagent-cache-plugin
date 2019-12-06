@@ -173,7 +173,7 @@ superagent
 
 ## .prune(callback (response, gutResponse))
 
-> Caution: if you use this function, `supergent-cache-plugin` [will not automatically gut](#what-exactly-gets-cached) the `response` object for you. Be sure that the result of your `.prune()` callback function will never be circular and is not larger than it needs to be.
+> Caution: if you use this function, `supergent-cache-plugin` [will not automatically gut](#what-exactly-gets-cached) the `response` object for you (although you can use the `gutResponse` param to do so manually--more on that below). Be sure that the result of your `.prune()` callback function will never be circular and is not larger than it needs to be.
 
 If you need to dig several layers into superagent's response, you can do so by passing a function to `.prune()`. Your prune function will receive superagent's response and should return a truthy value or `null`. The benefit of using this function is that you can cache only what you need.
 

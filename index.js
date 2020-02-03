@@ -175,7 +175,7 @@ module.exports = function(cache, defaults){
                     response.redirects = _Request.scRedirectsList;
                     policy = new CachePolicy(Request.toJSON(), utils.gutResponse(response, Request));
                     if(props.prune){
-                      response = props.prune(response);
+                      response = props.prune(response, utils.gutResponse);
                     }
                     else if(props.responseProp) {
                       response = response[props.responseProp] || null;

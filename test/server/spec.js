@@ -5,6 +5,7 @@ var cModule = require('cache-service-cache-module');
 var cache = new cModule();
 var superagentCacheModule = require('../../index');
 var superagentCache = superagentCacheModule(cache, { expiration: 1 });
+var utils = require('../../utils');
 
 var app = express();
 
@@ -107,6 +108,22 @@ describe('superagentCache', function() {
         .prune(prune)
         .end(function (err, response, key){
           expect(response).toBe('one');
+          done();
+        }
+      );
+    });
+
+    it('.get() .prune(f(r, g)) .end() should expose the internal gutResponse function', function (done) {
+      var prune = function(r, gut){
+        expect(gut).toBe(utils.gutResponse);
+        return gut(r);
+      }
+      superagent
+        .get('localhost:3000/one')
+        .use(superagentCache)
+        .prune(prune)
+        .end(function (err, response, key){
+          expect(response.body.key).toBe('one');
           done();
         }
       );

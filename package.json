@@ -34,5 +34,8 @@
     "plugin",
     "browser",
     "node"
-  ]
+  ],
+  "dependencies": {
+    "http-cache-semantics": "~3.7.3"
+  }
 }

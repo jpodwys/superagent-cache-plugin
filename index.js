@@ -1,3 +1,4 @@
+const CachePolicy = require('http-cache-semantics');
 var utils = require('./utils');
 
 /**
@@ -67,7 +68,7 @@ module.exports = function(cache, defaults){
      */
     Request.expiration = function(expiration){
       props.expiration = expiration;
-      return Request;
+      return Request.set('cache-control', 'max-age=' + expiration);
     }
 
     /**
@@ -89,7 +90,44 @@ module.exports = function(cache, defaults){
     }
 
     /**
-     * Save the exisitng .end() value ("namespaced" in case of other plugins)
+     * Array of header names, which should be bypassed from a request to a response.
+     * This is useful for eg. some correlation ID, which binds a request with a response
+     * and could be an issue when returning the cached response.
+     * Note, that bypassed headers are copied only to cached responses.
+     *
+     * @param {string|string[]} bypassHeaders
+     */
+    Request.bypassHeaders = function(bypassHeaders){
+      props.bypassHeaders = (typeof bypassHeaders === 'string') ? [bypassHeaders] : bypassHeaders;
+      return Request;
+    }
+
+    var cachedEntry;
+
+    // Special handling for the '304 Not Modified' case, which will only come out
+    // in case of server responses with 'ETag' and/or 'Last-Modified' headers.
+    Request.on('response', function (res) {
+      if (res.status === 304 && cachedEntry) {
+        // update the cache entry
+        const key = utils.keygen(Request, props);
+        const policy = CachePolicy.fromObject(cachedEntry.policy).revalidatedPolicy(Request.toJSON(), res).policy;
+        cachedEntry.policy = policy.toObject();
+        cache.set(key, cachedEntry, utils.getExpiration(props, policy));
+        // modify response
+        res.status = cachedEntry.response.status;
+        res.statusCode = cachedEntry.response.statusCode;
+        res.header = policy.responseHeaders();
+        utils.setResponseHeader(res, 'x-cache', 'HIT');
+        utils.copyBypassHeaders(res, Request, props);
+        res.body = cachedEntry.response.body;
+        res.text = cachedEntry.response.text;
+        // cleanup
+        cachedEntry = undefined;
+      }
+    });
+
+    /**
+     * Save the existing .end() value ("namespaced" in case of other plugins)
      * so that we can provide our customized .end() and then call through to
      * the underlying implementation.
      */
@@ -100,46 +138,81 @@ module.exports = function(cache, defaults){
      * @param {function} cb
      */
     Request.end = function(cb){
+      utils.handleReqCacheHeaders(Request, props);
       Request.scRedirectsList = Request.scRedirectsList || [];
       Request.scRedirectsList = Request.scRedirectsList.concat(Request._redirectList);
       if(~supportedMethods.indexOf(Request.method.toUpperCase())){
         var _Request = Request;
         var key = utils.keygen(Request, props);
         if(~cacheableMethods.indexOf(Request.method.toUpperCase())){
-          cache.get(key, function (err, response){
-            if(!err && response && !props.forceUpdate){
-              utils.callbackExecutor(cb, err, response, key);
+          cache.get(key, function (err, entry) {
+            cachedEntry = entry;
+            const cachedResponse = entry ? entry.response : undefined;
+            var policy = entry && entry.policy ? CachePolicy.fromObject(entry.policy) : undefined;
+            if (cachedResponse && policy) {
+              cachedResponse.header = policy.responseHeaders();
+              utils.setResponseHeader(cachedResponse, 'x-cache', 'HIT');
+              utils.copyBypassHeaders(cachedResponse, Request, props);
+            }
+            if(!err && cachedResponse && policy
+              && policy.satisfiesWithoutRevalidation(Request.toJSON()) && !props.forceUpdate) {
+              // Return the clone of the cached response.
+              return utils.callbackExecutor(cb, null, JSON.parse(JSON.stringify(cachedResponse)), key, Request);
             }
             else{
               if(props.doQuery){
+                if (policy) {
+                  const headers = policy.revalidationHeaders(Request.toJSON());
+                  Object.keys(headers).forEach(function(key) {
+                    Request = Request.set(key, headers[key]);
+                  });
+                }
                 end.call(Request, function (err, response){
                   if(err){
                     return utils.callbackExecutor(cb, err, response, key);
                   }
-                  else if(!err && response){
+                  else if(response){
                     response.redirects = _Request.scRedirectsList;
+                    policy = new CachePolicy(Request.toJSON(), utils.gutResponse(response, Request));
                     if(props.prune){
                       response = props.prune(response, utils.gutResponse);
                     }
-                    else if(props.responseProp){
+                    else if(props.responseProp) {
                       response = response[props.responseProp] || null;
                     }
                     else{
-                      response = utils.gutResponse(response);
+                      response = utils.gutResponse(response, Request);
                     }
-                    if(!utils.isEmpty(response) || props.cacheWhenEmpty){
-                      cache.set(key, response, props.expiration, function (){
-                        return utils.callbackExecutor(cb, err, response, key);
-                      });
+                    utils.setResponseHeader(response, 'x-cache', 'MISS');
+                    if ((0 !== props.expiration) && (!utils.isEmpty(response) || props.cacheWhenEmpty)) {
+                      if (policy.storable() && policy.timeToLive() > 0) {
+                        // The TTL in underlying caches will be policy TTL x 2, as we want to allow for
+                        // further serving of the stale objects (when the policy allows for that).
+                        const expiration = utils.getExpiration(props, policy);
+                        const entry = { policy: policy.toObject() , response: response };
+                        cache.set(key, entry, expiration , function () {
+                          return utils.callbackExecutor(cb, null, response, key);
+                        });
+                      }
+                      else {
+                        return utils.callbackExecutor(cb, null, response, key);
+                      }
                     }
                     else{
-                      return utils.callbackExecutor(cb, err, response, key);
+                      return utils.callbackExecutor(cb, null, response, key);
                     }
                   }
                 });
               }
               else{
-                return utils.callbackExecutor(cb, null, null, key);
+                // This is actually the 'only-if-cached' condition
+                // (doQuery=false is exactly the same intention).
+                // Returning the response status 504 as the RFC2616 states about the 'only-if-cached'.
+                // See: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9.4.
+                return utils.callbackExecutor(cb, null, {
+                  status: 504,
+                  header: {},
+                }, key);
               }
             }
           });
@@ -165,7 +238,6 @@ module.exports = function(cache, defaults){
         });
       }
     }
-
-    return Request;
+    return props.expiration !== undefined ? Request.set('Cache-control', 'max-age=' + props.expiration) : Request;
   }
 }

@@ -25,7 +25,7 @@ Require and instantiate superagent-cache-plugin as follows to get the [default c
 ```javascript
 // Require and instantiate a cache module
 var cacheModule = require('cache-service-cache-module');
-var cache = new cacheModule({storage: 'session', defaultExpiration: 60});
+var cache = new cacheModule({storage: 'session'});
 
 // Require superagent-cache-plugin and pass your cache module
 var superagentCache = require('superagent-cache-plugin')(cache);
@@ -100,6 +100,23 @@ All options that can be passed to the `defaults` `require` param can be overwrit
 * cacheWhenEmpty
 * doQuery
 * forceUpdate
+* bypassHeaders
+
+# The `Cache-Control` request/response headers related behavior
+
+* Setting the request header `Cache-Control: maxe-age=X` is an alternative to the `.expiration(X)` API method call.
+* Setting the request header `Cache-Control: only-if-cached` is an alternative to the `.doQuery(false)` API method call.
+* Setting the `Cache-Control`request header value to one of `maxe-age=0`, `no-cache`, `no-store`switches of caching of the response.
+
+**NOTE** The plugin respects the server response cache related headers (`Cache-Control`, `Pragma: no-cache`, `Expires`) and calculates proper TTL for cached responses, with the respect to following:
+
+* When the `expiration` option is unspecified, the default behavior will be no caching, unless the server response `Cache-Control` header specifies otherwise.
+* The `expiration=0` specified in options will switch off caching for any request, even when the server specifies that the response is cacheable and provides non-zero TTL via eg. the `Cache-Control: max-age=X` header.
+* The non-zero `expiration` option value will narrow down any of TTL value specified via server response `Cache-Control` header.
+* When the `expiration` option value is greater than the TTL specified via server response `Cache-Control` header, the later wins.
+
+## `ETag` and `Last-Modified` support.
+The `ETag` and `Last-Modified` related cache behavior is supported with sending the associated request headers for cached response revalidation and proper handling of the `304 Not Modified` response, which results in serving the cached response instead `304` one.
 
 # Supported Caches
 
@@ -302,6 +319,43 @@ Tells `superagent-cache-plugin` to perform an ajax call regardless of whether th
 #### Arguments
 
 * bool: boolean, default: false
+
+## .bypassHeaders(headerNames)
+
+Tells `superagent-cache-plugin` to copy given headers from the current executing request to the response.
+This is useful for eg. some correlation ID, which binds a request with a response and could be an issue when returning a cached response.
+**Note** Bypassed headers are copied only to cached responses.
+
+#### Arguments
+
+* headerNames: string or array of strings
+
+#### Example
+
+```javascript
+//the superagent query will be executed with all headers
+//but the key used to store the superagent response will be generated without the 'bypassHeaders' header keys
+//and the response will have those keys set to the values from the request headers, when served from a cache.
+var correlationId = 0;
+superagent
+  .get(uri)
+  .use(superagentCache)
+  .expiration(1)
+  .bypassHeaders(['x-correlation-id'])
+  .set('x-correlation-id', correlationId++)
+  .end(function (error, response){
+    superagent
+      .get(uri)
+      .use(superagentCache)
+      .bypassHeaders(['x-correlation-id'])
+      .set('x-correlation-id', correlationId++)
+      .end(function (error, response){
+        expect(response.header['x-cache']).toBe('HIT');
+        expect(response.header['x-correlation-id']).toBe(1);
+      });
+  }
+);
+```
 
 ## superagentCache.cache
 

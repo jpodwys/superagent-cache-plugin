@@ -1,3 +1,4 @@
+const CachePolicy = require('http-cache-semantics');
 module.exports = {
   /**
    * Generate a cache key unique to this query
@@ -10,6 +11,11 @@ module.exports = {
     var cleanOptions = null;
     var params = this.getQueryParams(req);
     var options = this.getHeaderOptions(req);
+    // prune headers together with revalidation headers added internally by superagent
+    // and optional 'bypassHeaders' which are likely changing per request and should not
+    // be used to calculate the cache key.
+    props.pruneHeader = ['if-none-match', 'if-modified-since']
+      .concat(props.pruneHeader || [], props.bypassHeaders || []);
     if(props.pruneQuery || props.pruneHeader){
       cleanParams = (props.pruneQuery) ? this.pruneObj(this.cloneObject(params), props.pruneQuery) : params;
       cleanOptions = (props.pruneHeader) ? this.pruneObj(this.cloneObject(options), props.pruneHeader, true) : options;
@@ -47,15 +53,22 @@ module.exports = {
    * @param {object} reg
    */
   getHeaderOptions: function(req){
-    //I have to remove the User-Agent header ever since superagent 1.7.0
-    if(req && req._header){
-      return this.pruneObj(req._header, ['User-Agent', 'user-agent']);
+    // I have to remove the User-Agent header ever since superagent 1.7.0
+    // The cache-control header must also be removed.
+    // Clone the request first, as we don't want to remove the headers from the original one, do we?
+    const _req = req ? JSON.parse(JSON.stringify(req)) : req;
+    const headersToPrune = ['user-agent', 'cache-control'];
+    if(_req && _req.headers){
+      return this.pruneObj(_req.headers, headersToPrune);
     }
-    else if(req && req.req && req.req._headers){
-      return this.pruneObj(req.req._headers, ['User-Agent', 'user-agent']);
+    else if(_req && _req._header){
+      return this.pruneObj(_req._header, headersToPrune);
     }
-    else if(req && req.header){
-      return this.pruneObj(req.header, ['User-Agent', 'user-agent']);
+    else if(_req && _req.req && _req.req._headers){
+      return this.pruneObj(_req.req._headers, headersToPrune);
+    }
+    else if(_req && _req.header){
+      return this.pruneObj(_req.header, headersToPrune);
     }
     return null;
   },
@@ -108,25 +121,33 @@ module.exports = {
    * @param {boolean} isOptions
    */
   pruneObj: function(obj, props, isOptions){
-    for(var i = 0; i < props.length; i++){
-      var prop = props[i];
-      if(isOptions){
-        delete obj[prop.toLowerCase()];
+    const lowerCasedProps = props.map(function (item) {
+      return item.toLowerCase();
+    });
+    Object.keys(obj).forEach(function (key) {
+      if (lowerCasedProps.indexOf(key.toLowerCase()) !== -1) {
+        if(isOptions){
+          delete obj[key.toLowerCase()];
+        }
+        delete obj[key];
       }
-      delete obj[prop];
-    }
+    });
     return obj;
   },
 
   /**
    * Simplify superagent's http response object
-   * @param {object} r
+   * @param {object} r - The response.
+   * @param {object} Request - The superagent's Request instance.
+   * @param {object} props  - The request properties.
    */
-  gutResponse: function(r){
+  gutResponse: function(r, Request, props){
     var newResponse = {};
+    newResponse.req = Request.toJSON();
     newResponse.body = r.body;
     newResponse.text = r.text;
-    newResponse.headers = r.headers;
+    newResponse.header = r.header;
+    newResponse.headers = r.header;
     newResponse.statusCode = r.statusCode;
     newResponse.status = r.status;
     newResponse.ok = r.ok;
@@ -170,7 +191,8 @@ module.exports = {
       expiration: d.expiration,
       forceUpdate: d.forceUpdate,
       preventDuplicateCalls: d.preventDuplicateCalls,
-      backgroundRefresh: d.backgroundRefresh
+      backgroundRefresh: d.backgroundRefresh,
+      bypassHeaders: d.bypassHeaders
     };
   },
 
@@ -180,8 +202,22 @@ module.exports = {
    * @param {object} err
    * @param {object} response
    * @param {string} key
+   * @param {object} [Request] - Superagent Request instance. When provided it will emit the events.
+   * @param {object} props  - The request internal properties.
    */
-  callbackExecutor: function(cb, err, response, key){
+  callbackExecutor: function(cb, err, response, key, Request){
+    if (response) {
+      // Superagent response should bear only the 'header' attribute, this was only needed for the policy.
+      delete response.headers;
+      if (Request) {
+        Request.emit('request', Request);
+        if (err) {
+          Request.emit('error', err);
+        } else {
+          Request.emit('response', response);
+        }
+      }
+    }
     if(cb.length === 1){
       cb(response);
     }
@@ -191,5 +227,94 @@ module.exports = {
     else{
       throw new Error('UnsupportedCallbackException: Your .end() callback must pass at least one argument.');
     }
+  },
+
+  /**
+   * Handles the request cache headers and eventually modifies the per request properties affecting caching.
+   * This method is called in early stage, before any attempt to execute the request against the HTTP server.
+   *
+   * @param {object} req    - The request object.
+   * @param {object} props  - The request-basis properties, which affect cache behavior.
+   * @returns {object} The modified properties.
+   */
+  handleReqCacheHeaders: function (req, props) {
+    const cacheControl = req.get('cache-control');
+    if (typeof cacheControl === 'string') {
+      if (cacheControl.toLowerCase().indexOf('only-if-cached') !== -1) {
+        props.doQuery = false;
+      }
+      // the expiration can also be set via the Request header.
+      const maxAgeMatch = cacheControl.toLowerCase().match(/^(.*max-age=)(\d*).*$/);
+      if (maxAgeMatch && maxAgeMatch.length > 2 && maxAgeMatch[2] !== '') {
+        props.expiration = parseInt(maxAgeMatch[2]);
+      }
+    }
+    // We cheat the policy a bit here, giving the request instead of response (we don't have it at this stage),
+    // as we want to parse the request headers for the caching control related values,
+    // which could override the 'props' values.
+    const policy = new CachePolicy(req.toJSON(), req.toJSON());
+    // The 'no-store' will be checked here.
+    // Note: The default 'policy.timeToLive()' is '0' (means when there's no Expires or max-age specified).
+    // The legacy method 'expiration()' will set the policy TTL value via the Cache-Control max-age value,
+    // so no conflicts here.
+    props.expiration = policy.storable() ? Math.round(policy.timeToLive() / 1000) : 0;
+  },
+
+  /**
+   * Returns the `expiration` (TTL) value calculated as a minimum of the `props.expiration` and `policy.timeToLive`.
+   * The resulting value is multiplied by `2`due to enable further handling of the stale cache entries,
+   * (when the policy allows for that).
+   * The resulting value is to be used for underlying cache implementation.
+   *
+   * @param {object} props  - The request-basis properties, which affect cache behavior.
+   * @param {object} policy - The cache policy.
+   * @returns {number} The expiration (TTL) time in seconds.
+   */
+  getExpiration: function (props, policy) {
+    return Math.min(props.expiration * 2 || Number.MAX_VALUE, Math.round(policy.timeToLive() * 2 / 1000));
+  },
+
+  /**
+   * Sets the response header value.
+   *
+   * @param {object} response - The response instance.
+   * @param {string} name     - The header name.
+   * @param {string} value    - The header value.
+   * @returns {object} The incoming modified response.
+   */
+  setResponseHeader: function (response, name, value) {
+    // both need to be checked as someone could do strange things with 'prune' or 'responseProp'.
+    if (response) {
+      if (response.header) {
+        response.header[name] = value;
+      }
+      if (response.headers) {
+        response.headers[name] = value;
+      }
+    }
+    return response;
+  },
+
+  /**
+   * Copies the header values declared with the `bypassHeaders` option from current request
+   * to a cached response headers and its bound request headers.
+   *
+   * @param {object} response - The response instance.
+   * @param {object} req      - The request object.
+   * @param {object} props  - The request-basis properties, which affect cache behavior.
+   * @returns {object} The incoming modified response.
+   */
+  copyBypassHeaders: function (response, req, props) {
+    const self = this;
+    if (props.bypassHeaders && props.bypassHeaders.forEach) {
+      props.bypassHeaders.forEach(function (name) {
+        const value = req.get(name);
+        self.setResponseHeader(response, name, value);
+        if (response.req && response.req.headers) {
+          response.req.headers[name] = value;
+        }
+      });
+    }
+    return response;
   }
 }

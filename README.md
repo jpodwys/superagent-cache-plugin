@@ -104,7 +104,7 @@ All options that can be passed to the `defaults` `require` param can be overwrit
 * forceUpdate
 * bypassHeaders
 
-# The `Cache-Control` request/response headers related behavior
+# The `Cache-Control` request/response headers related behavior (since `3.0.0-beta.1`)
 
 * Setting the request header `Cache-Control: maxe-age=X` is an alternative to the `.expiration(X)` API method call.
 * Setting the request header `Cache-Control: only-if-cached` is an alternative to the `.doQuery(false)` API method call.

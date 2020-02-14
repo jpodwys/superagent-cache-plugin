@@ -1,3 +1,5 @@
+Note: These docs are for the `3.0.0-beta.1` release in which http cache header support was added. If you are using an earlier version of `superagent-cache-plugin`, please be aware that versions prior to `3.0.0-beta.1` do not have http cache header support. Expect a proper `3.0.0` release before long.
+
 # superagent-cache-plugin
 
 A superagent plugin providing flexible, built-in caching.

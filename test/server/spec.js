@@ -37,7 +37,7 @@ app.get('/false', function(req, res){
 });
 
 app.get('/params', function(req, res){
-  res.send(200, {pruneQuery: req.query.pruneQuery, otherParams: req.query.otherParams});
+  res.send(200, {pruneQuery: req.query.pruneQuery, otherParams: req.query.otherParams, arrayParams: req.query.arrayParams});
 });
 
 app.get('/options', function(req, res){
@@ -175,13 +175,17 @@ describe('superagentCache', function(){
       superagent
         .get('localhost:3000/params')
         .use(superagentCache)
-        .query({pruneQuery: true, otherParams: false})
+        .query({pruneQuery: true, otherParams: false, arrayParams: ['a', 'b', 'c']})
         .pruneQuery(['pruneQuery'])
         .end(function (err, response, key){
           expect(response.body.pruneQuery).toBe('true');
           expect(response.body.otherParams).toBe('false');
+          expect(response.body.arrayParams).toEqual(['a', 'b', 'c']);
           expect(key.indexOf('pruneQuery')).toBe(-1);
           expect(key.indexOf('otherParams')).toBeGreaterThan(-1);
+          expect(key.indexOf('arrayParams')).toBeGreaterThan(-1);
+          var keyObj = JSON.parse(key);
+          expect(keyObj['params']['arrayParams']).toEqual(['a', 'b', 'c']);
           done();
         }
       );
@@ -191,13 +195,17 @@ describe('superagentCache', function(){
       superagent
         .get('localhost:3000/params')
         .use(superagentCache)
-        .query('pruneQuery=true&otherParams=false')
+        .query('pruneQuery=true&otherParams=false&arrayParams[]=a&arrayParams[]=b&arrayParams[]=c')
         .pruneQuery(['pruneQuery'])
         .end(function (err, response, key){
           expect(response.body.pruneQuery).toBe('true');
           expect(response.body.otherParams).toBe('false');
+          expect(response.body.arrayParams).toEqual(['a', 'b', 'c']);
           expect(key.indexOf('pruneQuery')).toBe(-1);
           expect(key.indexOf('otherParams')).toBeGreaterThan(-1);
+          expect(key.indexOf('arrayParams')).toBeGreaterThan(-1);
+          var keyObj = JSON.parse(key);
+          expect(keyObj.params['arrayParams[]']).toEqual('a,b,c');
           done();
         }
       );
@@ -209,12 +217,17 @@ describe('superagentCache', function(){
         .use(superagentCache)
         .query('pruneQuery=true')
         .query('otherParams=false')
-        .pruneQuery(['pruneQuery'])
+        .query('arrayParams[]=a')
+        .query('arrayParams[]=b')
+        .query('arrayParams[]=c')
+        .pruneQuery(['pruneQuery', 'arrayParams[]'])
         .end(function (err, response, key){
           expect(response.body.pruneQuery).toBe('true');
           expect(response.body.otherParams).toBe('false');
+          expect(response.body.arrayParams).toEqual(['a', 'b', 'c']);
           expect(key.indexOf('pruneQuery')).toBe(-1);
           expect(key.indexOf('otherParams')).toBeGreaterThan(-1);
+          expect(key.indexOf('arrayParams[]')).toBe(-1);
           done();
         }
       )

@@ -72,7 +72,11 @@ module.exports = {
         var kvArray = str.split('&');
         for(var j = 0; j < kvArray.length; j++){
           var kvString = kvArray[j].split('=');
-          obj[kvString[0]] = kvString[1];
+          if(obj[kvString[0]]){
+            obj[kvString[0]] = obj[kvString[0]] + ',' + kvString[1];
+          }else{
+            obj[kvString[0]] = kvString[1];
+          }
         }
       }
       return obj;
@@ -94,7 +98,11 @@ module.exports = {
       var kvArray = str.split('&');
       for(var i = 0; i < kvArray.length; i++){
         var kvString = kvArray[i].split('=');
-        obj[kvString[0]] = kvString[1];
+        if(obj[kvString[0]]){
+          obj[kvString[0]] = obj[kvString[0]] + ',' + kvString[1];
+        }else{
+          obj[kvString[0]] = kvString[1];
+        }
       }
       return obj;
     }
